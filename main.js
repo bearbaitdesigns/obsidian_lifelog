@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
   name: "",
   subtitle: "",
   banners: {}, // tab id -> vault path of image
+  welcomed: false,
 };
 
 // field: [frontmatter key, label, input type, placeholder]
@@ -264,6 +265,7 @@ class LifeLogPlugin extends Plugin {
     this.registerView(VIEW_TYPE, (leaf) => new LifeLogView(leaf, this));
     this.addRibbonIcon(ICON, "Open Life Log", () => this.activateView());
     this.addCommand({ id: "open-dashboard", name: "Open dashboard", callback: () => this.activateView() });
+    this.addCommand({ id: "add-examples", name: "Add example entries", callback: () => this.createExamples() });
     this.addCommand({ id: "new-entry", name: "New entry", callback: () => EditModal.openFor(this, null, "people") });
     for (const k of CAT_KEYS) {
       this.addCommand({ id: `new-${k}`, name: `New ${CATS[k].one.toLowerCase()}`, callback: () => EditModal.openFor(this, null, k) });
@@ -276,6 +278,12 @@ class LifeLogPlugin extends Plugin {
     const refresh = debounce(() => this.reindex(), 200, true);
     this.app.workspace.onLayoutReady(() => {
       this.reindex();
+      if (!this.settings.welcomed) {
+        // First run: open the dashboard so the plugin doesn't look like it did nothing.
+        this.settings.welcomed = true;
+        this.saveSettings();
+        this.activateView();
+      }
       this.registerEvent(this.app.metadataCache.on("changed", refresh));
       this.registerEvent(this.app.metadataCache.on("resolved", refresh));
       this.registerEvent(this.app.vault.on("create", refresh));
@@ -484,6 +492,41 @@ class LifeLogPlugin extends Plugin {
     return file;
   }
 
+  async createExamples() {
+    const ex = [
+      ["homes", "The Halden House", { type: "Childhood home", location: "Halden", moved_in: "1992-04", moved_out: "2007-08" }, "Blue door, crooked apple tree.", []],
+      ["homes", "The Cottage on Elm", { type: "Cottage", location: "Portland", moved_in: "2019-10" }, "", []],
+      ["people", "Inês Ferreira", { relation: "Grandmother", aliases: "Vovó", occupation: "Baker", birthday: "1938-11-02", death: "2015-03-21" }, "Taught me to bake bread.", []],
+      ["people", "Ana Ashdown", { relation: "Mother", aliases: "Mom", occupation: "Retired teacher", birthday: "1962-08-14" }, "Calls every Sunday at 6pm sharp.", [["Inês Ferreira", "Mother"], ["The Halden House", "Lived here"]]],
+      ["people", "Elliot Ashdown", { relation: "Brother", aliases: "Eli, El", occupation: "Paramedic", birthday: "1995-02-03" }, "", [["Ana Ashdown", "Mother"], ["The Halden House", "Lived here"]]],
+      ["people", "Mara Okafor", { relation: "Best friend", occupation: "Architect", met: "2007-09", met_where: "University dorms" }, "Knocked on my door on move-in day asking to borrow a kettle.", []],
+      ["pets", "Biscuit", { species: "Dog · Golden Retriever", aliases: "Biscuit Boy", birthday: "2004-12-20", joined: "2005-06", rainbow_bridge: "2018-11-04", came_from: "Halden shelter" }, "Ate an entire birthday cake and showed no remorse.", [["Elliot Ashdown", "Best buddy"], ["The Halden House", "Lived here"]]],
+      ["pets", "Juniper", { species: "Dog · Border Collie", birthday: "2019-11-10", joined: "2020-03", came_from: "Rescue" }, "Herds the cat. Herds the vacuum. Herds me.", [["The Cottage on Elm", "Lives here"]]],
+      ["education", "University of Ashford", { level: "B.A.", major: "Graphic Design", minor: "Art History", location: "Ashford", started: "2007-09", finished: "2011-05" }, "", [["Mara Okafor", "Classmate"]]],
+      ["work", "Lantern & Co.", { role: "Design Lead", location: "Portland", started: "2016-04" }, "", []],
+      ["milestones", "Ran a marathon", { type: "Achievement", location: "Portland", date: "2022-10" }, "4:12:38. Never again (until next year).", []],
+    ];
+    const made = {};
+    let n = 0;
+    try {
+      for (const [cat, title, values, notes, links] of ex) {
+        const root = normalizePath(`${this.settings.folder || "Life Log"}/${CATS[cat].folder}/${title}.md`);
+        const existing = this.app.vault.getAbstractFileByPath(root);
+        if (existing) { made[title] = existing.path; continue; }
+        const file = await this.saveEntry({
+          file: null, cat, title, values, notes, tags: ["lifelog-example"], cover: "", gallery: [],
+          links: links.filter(([t]) => made[t]).map(([t, label]) => ({ path: made[t], label })), keepLinks: [],
+        });
+        made[title] = file.path;
+        n++;
+      }
+      new Notice(n ? `Added ${n} example entries` : "Example entries already exist");
+    } catch (err) {
+      console.error(err);
+      new Notice("Life Log: couldn't add examples — " + (err && err.message ? err.message : err));
+    }
+  }
+
   async deleteEntry(e) {
     const { metadataCache, fileManager, vault } = this.app;
     for (const o of this.entries) {
@@ -662,15 +705,27 @@ class LifeLogView extends ItemView {
     const root = this.contentEl;
     if (!root) return;
     const scroll = root.scrollTop;
-    root.replaceChildren();
-    const app = h("div", { cls: "ll-app" });
-    app.append(this.renderBanner(), this.renderTabs());
-    const main = h("div", { cls: "ll-main" });
-    if (this.tab === "overview") main.append(this.renderOverview());
-    else if (this.tab === "guide") main.append(renderGuide());
-    else main.append(this.renderCat(this.tab));
-    app.append(main);
-    root.append(app);
+    root.addClass("lifelog");
+    let app;
+    try {
+      app = h("div", { cls: "ll-app" });
+      app.append(this.renderBanner(), this.renderTabs());
+      const main = h("div", { cls: "ll-main" });
+      if (this.tab === "overview") main.append(this.renderOverview());
+      else if (this.tab === "guide") main.append(renderGuide());
+      else main.append(this.renderCat(this.tab));
+      app.append(main);
+    } catch (err) {
+      // Never leave a silent blank tab: show what went wrong.
+      console.error("Life Log: couldn't draw the dashboard", err);
+      app = h("div", { cls: "ll-app" },
+        h("div", { cls: "ll-error" },
+          h("h2", { text: "Life Log couldn't draw the dashboard" }),
+          h("p", { text: "Please report this at github.com/bearbaitdesigns/obsidian_lifelog/issues and include the details below." }),
+          h("pre", { text: `${err && err.message}\n\n${err && err.stack}` }),
+          btn("Try again", () => this.render(true))));
+    }
+    root.replaceChildren(app);
     root.scrollTop = resetScroll ? 0 : scroll;
   }
 
@@ -710,14 +765,32 @@ class LifeLogView extends ItemView {
       h("button", { cls: "ll-tab" + (k === this.tab ? " is-active" : ""), type: "button", onclick: () => this.setTab(k) }, l)));
   }
 
+  renderWelcome() {
+    const p = this.plugin;
+    const ex = btn("Add example entries", async () => {
+      ex.disabled = true; ex.textContent = "Adding…";
+      try { await p.createExamples(); } finally { ex.disabled = false; ex.textContent = "Add example entries"; }
+    });
+    return h("section", { cls: "ll-win ll-welcome" },
+      h("div", { cls: "ll-win-b" },
+        h("h2", { text: "Welcome to Life Log" }),
+        h("p", { text: "Keep a record of the people, pets, schools, jobs, homes and milestones in your life. Each entry is a normal note in your vault, in the “" + (p.settings.folder || "Life Log") + "” folder." }),
+        h("div", { cls: "ll-row-btns ll-left" },
+          btn("+ Add your first entry", () => EditModal.openFor(p, null, "people"), "mod-primary"),
+          ex,
+          btn("How it works", () => this.setTab("guide"), "mod-ghost")),
+        h("p", { cls: "ll-hint", text: "Example entries are tagged #lifelog-example so they're easy to find and delete later." })));
+  }
+
   renderOverview() {
     const p = this.plugin;
     const open = (e) => this.open(e);
-    return h("div", { cls: "ll-ov" },
+    const ov = h("div", { cls: "ll-ov" },
       h("div", { cls: "ll-col" },
         win("Summary", null, buildSummary(p, (k) => this.setTab(k), open)),
         win("Pets", [btn("+ Add", () => EditModal.openFor(p, null, "pets"), "mod-ghost")], buildPets(p, open))),
       win("Timeline", [btn("+ New entry", () => EditModal.openFor(p, null, "people"), "mod-primary")], buildTimeline(p, open)));
+    return p.entries.length ? ov : h("div", {}, this.renderWelcome(), ov);
   }
 
   renderCat(cat) {

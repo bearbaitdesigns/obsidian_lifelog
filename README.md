@@ -43,7 +43,8 @@ Download `main.js`, `manifest.json` and `styles.css` from the [latest release](h
 
 ## Using it
 
-- Click the **book** icon in the ribbon, or run **Life Log: Open dashboard** from the command palette.
+- The dashboard opens by itself the first time you enable the plugin. After that, click the **book** icon in the ribbon, or run **Life Log: Open dashboard** from the command palette.
+- On an empty vault, the Overview shows a welcome panel. **Add example entries** (also available as the command **Life Log: Add example entries**) fills the dashboard with a small connected family, pets, a school, a job and homes. They're tagged `#lifelog-example` so you can find and delete them later.
 - Add entries with **+ New entry**, the **+** card on any tab, or commands such as **Life Log: New person**.
 - To set a banner, open a tab and click the image button on the banner. The reset button removes that tab's banner.
 - Click your name or the line under it on the Overview banner to edit them.
