@@ -84,18 +84,14 @@ limit: 10          # optional
 
 ## Releasing a new version
 
-1. Run `node scripts/bump-version.mjs 1.0.1` to update `manifest.json` and `versions.json`.
-2. Commit, then push a tag that matches the version exactly, with no `v` prefix:
-   ```sh
-   git commit -am "Release 1.0.1"
-   git tag 1.0.1
-   git push && git push origin 1.0.1
-   ```
-3. The **Release** GitHub Action checks that the tag matches `manifest.json`, then publishes a release with `main.js`, `manifest.json` and `styles.css`. BRAT picks it up from there.
+1. Run `node scripts/bump-version.mjs 1.0.1` to update `manifest.json` and `versions.json`, then commit and push.
+2. Start the **Release** GitHub Action in any of these ways:
+   - **Actions → Release → Run workflow.** This releases the version in `manifest.json` and creates the tag for you.
+   - Push a tag that matches the version exactly, with no `v` prefix: `git tag 1.0.1 && git push origin 1.0.1`.
+   - Publish a release from the GitHub website with a matching tag.
+3. The Action checks that the version matches `manifest.json` and `versions.json`, then publishes a release with `main.js`, `manifest.json` and `styles.css`. BRAT picks it up from there.
 
-You can also release from the GitHub website instead of pushing a tag. Bump the version first, then go to **Releases → Draft a new release**, create a tag that matches the version (for example `1.0.1`) and publish. The Action attaches the three files.
-
-A tag with a hyphen, such as `1.1.0-beta.1`, is published as a pre-release.
+A version with a hyphen, such as `1.1.0-beta.1`, is published as a pre-release.
 
 ## License
 
