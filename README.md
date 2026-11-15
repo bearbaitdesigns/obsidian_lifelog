@@ -93,6 +93,8 @@ limit: 10          # optional
    ```
 3. The **Release** GitHub Action checks that the tag matches `manifest.json`, then publishes a release with `main.js`, `manifest.json` and `styles.css`. BRAT picks it up from there.
 
+You can also release from the GitHub website instead of pushing a tag. Bump the version first, then go to **Releases → Draft a new release**, create a tag that matches the version (for example `1.0.1`) and publish. The Action attaches the three files.
+
 A tag with a hyphen, such as `1.1.0-beta.1`, is published as a pre-release.
 
 ## License
