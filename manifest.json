@@ -1,7 +1,7 @@
 {
   "id": "life-log",
   "name": "Life Log",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minAppVersion": "1.4.0",
   "description": "A dashboard for the people, pets, schools, jobs, homes and milestones in your life, with per-tab banners, photo galleries and connections.",
   "author": "bearbaitdesigns",

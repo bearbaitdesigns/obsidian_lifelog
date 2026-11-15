@@ -59,7 +59,9 @@ jobs:
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Check main.js
-        run: node --check main.js
+        run: |
+          node --check main.js
+          node scripts/check-overrides.js main.js
 
       - name: Publish release
         env:

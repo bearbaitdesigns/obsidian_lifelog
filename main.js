@@ -671,9 +671,9 @@ class LifeLogView extends ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
-    this.tab = "overview";
-    this.q = "";
-    this.sort = "newest";
+    this.llTab = "overview";
+    this.llQuery = "";
+    this.llSort = "newest";
   }
   getViewType() { return VIEW_TYPE; }
   getDisplayText() { return "Life Log"; }
@@ -681,27 +681,28 @@ class LifeLogView extends ItemView {
 
   async onOpen() {
     this.contentEl.addClass("lifelog");
-    this.unsub = this.plugin.onChange(() => this.render());
-    this.render();
+    this.unsub = this.plugin.onChange(() => this.llRender());
+    this.llRender();
   }
   async onClose() { if (this.unsub) this.unsub(); }
 
-  getState() { return Object.assign(super.getState ? super.getState() : {}, { tab: this.tab }); }
+  getState() { return Object.assign(super.getState ? super.getState() : {}, { tab: this.llTab }); }
   async setState(state, result) {
-    if (state && state.tab && TABS.some((t) => t[0] === state.tab)) this.tab = state.tab;
-    this.render();
+    if (state && state.tab && TABS.some((t) => t[0] === state.tab)) this.llTab = state.tab;
+    this.llRender();
     if (super.setState) await super.setState(state, result);
   }
   setTab(t) {
-    if (this.tab === t) return;
-    this.tab = t; this.q = "";
-    this.render(true);
+    if (this.llTab === t) return;
+    this.llTab = t; this.llQuery = "";
+    this.llRender(true);
     if (this.app.workspace.requestSaveLayout) this.app.workspace.requestSaveLayout();
   }
 
-  open(e) { new DetailModal(this.plugin, e.file).open(); }
+  // Not named `open`: that's Obsidian's own View lifecycle method.
+  openEntry(e) { if (e && e.file) new DetailModal(this.plugin, e.file).open(); }
 
-  render(resetScroll) {
+  llRender(resetScroll) {
     const root = this.contentEl;
     if (!root) return;
     const scroll = root.scrollTop;
@@ -711,9 +712,9 @@ class LifeLogView extends ItemView {
       app = h("div", { cls: "ll-app" });
       app.append(this.renderBanner(), this.renderTabs());
       const main = h("div", { cls: "ll-main" });
-      if (this.tab === "overview") main.append(this.renderOverview());
-      else if (this.tab === "guide") main.append(renderGuide());
-      else main.append(this.renderCat(this.tab));
+      if (this.llTab === "overview") main.append(this.renderOverview());
+      else if (this.llTab === "guide") main.append(renderGuide());
+      else main.append(this.renderCat(this.llTab));
       app.append(main);
     } catch (err) {
       // Never leave a silent blank tab: show what went wrong.
@@ -723,24 +724,24 @@ class LifeLogView extends ItemView {
           h("h2", { text: "Life Log couldn't draw the dashboard" }),
           h("p", { text: "Please report this at github.com/bearbaitdesigns/obsidian_lifelog/issues and include the details below." }),
           h("pre", { text: `${err && err.message}\n\n${err && err.stack}` }),
-          btn("Try again", () => this.render(true))));
+          btn("Try again", () => this.llRender(true))));
     }
     root.replaceChildren(app);
     root.scrollTop = resetScroll ? 0 : scroll;
   }
 
   renderBanner() {
-    const p = this.plugin, s = p.settings, tab = this.tab;
+    const p = this.plugin, s = p.settings, tab = this.llTab;
     const own = s.banners[tab];
     const url = p.resolvePath(own) || p.resolvePath(s.banners.overview);
     const label = tab === "overview" ? "Overview" : tab === "guide" ? "Guide" : CATS[tab].label;
     const btns = h("div", { cls: "ll-banner-btns" },
       own ? iconBtn("rotate-ccw", `Remove the ${label} banner`, async () => {
-        delete s.banners[tab]; await p.saveSettings(); this.render();
+        delete s.banners[tab]; await p.saveSettings(); this.llRender();
       }) : null,
       iconBtn("image", `Set a banner for ${label}`, async (ev) => {
         const [f] = await p.chooseImages(ev, false, `banner ${tab}`);
-        if (f) { s.banners[tab] = f.path; await p.saveSettings(); this.render(); new Notice(`Banner set for ${label}`); }
+        if (f) { s.banners[tab] = f.path; await p.saveSettings(); this.llRender(); new Notice(`Banner set for ${label}`); }
       }));
     let text;
     if (tab === "overview") {
@@ -762,7 +763,7 @@ class LifeLogView extends ItemView {
 
   renderTabs() {
     return h("nav", { cls: "ll-tabs" }, TABS.map(([k, l]) =>
-      h("button", { cls: "ll-tab" + (k === this.tab ? " is-active" : ""), type: "button", onclick: () => this.setTab(k) }, l)));
+      h("button", { cls: "ll-tab" + (k === this.llTab ? " is-active" : ""), type: "button", onclick: () => this.setTab(k) }, l)));
   }
 
   renderWelcome() {
@@ -784,7 +785,7 @@ class LifeLogView extends ItemView {
 
   renderOverview() {
     const p = this.plugin;
-    const open = (e) => this.open(e);
+    const open = (e) => this.openEntry(e);
     const ov = h("div", { cls: "ll-ov" },
       h("div", { cls: "ll-col" },
         win("Summary", null, buildSummary(p, (k) => this.setTab(k), open)),
@@ -797,20 +798,20 @@ class LifeLogView extends ItemView {
     const p = this.plugin, c = CATS[cat];
     const gridBox = h("div");
     const draw = () => {
-      const q = this.q.toLowerCase();
+      const q = this.llQuery.toLowerCase();
       let list = p.byCat(cat).filter((e) => !q || [e.title, ...c.fields.map(([k]) => val(e, k)), ...e.tags].join(" ").toLowerCase().includes(q));
       const key = (e) => startOf(e) || val(e, "birthday") || "";
-      list.sort((a, b) => this.sort === "newest" ? key(b).localeCompare(key(a)) || a.title.localeCompare(b.title)
-        : this.sort === "oldest" ? key(a).localeCompare(key(b)) || a.title.localeCompare(b.title)
+      list.sort((a, b) => this.llSort === "newest" ? key(b).localeCompare(key(a)) || a.title.localeCompare(b.title)
+        : this.llSort === "oldest" ? key(a).localeCompare(key(b)) || a.title.localeCompare(b.title)
           : a.title.localeCompare(b.title));
-      gridBox.replaceChildren(buildCards(list, (e) => this.open(e), (e) => EditModal.openFor(p, e),
+      gridBox.replaceChildren(buildCards(list, (e) => this.openEntry(e), (e) => EditModal.openFor(p, e),
         { label: `Add ${c.one.toLowerCase()}`, fn: () => EditModal.openFor(p, null, cat) }));
     };
-    const search = h("input", { type: "search", placeholder: `Search ${c.label.toLowerCase()}…`, value: this.q });
-    search.addEventListener("input", () => { this.q = search.value; draw(); });
+    const search = h("input", { type: "search", placeholder: `Search ${c.label.toLowerCase()}…`, value: this.llQuery });
+    search.addEventListener("input", () => { this.llQuery = search.value; draw(); });
     const sort = h("select", {}, [["newest", "Newest"], ["oldest", "Oldest"], ["az", "A–Z"]].map(([v, l]) => h("option", { value: v, text: l })));
-    sort.value = this.sort;
-    sort.addEventListener("change", () => { this.sort = sort.value; draw(); });
+    sort.value = this.llSort;
+    sort.addEventListener("change", () => { this.llSort = sort.value; draw(); });
     draw();
     return win(c.label, [h("div", { cls: "ll-toolbar" }, search, sort, btn(`+ ${c.one}`, () => EditModal.openFor(p, null, cat), "mod-primary"))], gridBox);
   }
@@ -893,21 +894,22 @@ class DetailModal extends Modal {
   onOpen() {
     this.comp = new Component();
     this.comp.load();
-    this.unsub = this.plugin.onChange(() => this.draw());
-    this.draw();
+    this.unsub = this.plugin.onChange(() => this.llDraw());
+    this.llDraw();
   }
   onClose() {
     if (this.unsub) this.unsub();
     this.comp.unload();
     this.contentEl.replaceChildren();
   }
-  go(file) { this.file = file; this.draw(true); }
+  go(file) { this.file = file; this.llDraw(true); }
 
-  async draw(top) {
+  async llDraw(top) {
     const p = this.plugin;
     const tok = ++this.tok;
-    const e = p.byFile(this.file);
+    const e = this.file ? p.byFile(this.file) : null;
     const el = this.contentEl;
+    if (!this.file) { this.close(); return; }
     if (!e) {
       if (!p.app.vault.getAbstractFileByPath(this.file.path)) { this.close(); return; }
       el.replaceChildren(h("div", { cls: "ll-loading", text: "Loading…" }));
@@ -995,7 +997,7 @@ class EditModal extends Modal {
     this.modalEl.addClass("ll-modal", "lifelog");
   }
   onOpen() {
-    this.draw();
+    this.llDraw();
     if (this.focusLinks) {
       const rows = this.contentEl.querySelectorAll(".ll-lk-row");
       const last = rows[rows.length - 1];
@@ -1017,7 +1019,7 @@ class EditModal extends Modal {
     d.links = [...f.querySelectorAll(".ll-lk-row")].map((r) => ({ path: r.querySelector("select").value, label: r.querySelector("input").value.trim() }));
   }
   // Callers sync() the form into the draft *before* changing the draft.
-  redraw() { const s = this.modalEl.scrollTop; this.draw(); this.modalEl.scrollTop = s; }
+  redraw() { const s = this.modalEl.scrollTop; this.llDraw(); this.modalEl.scrollTop = s; }
 
   linkRow(l, i) {
     const p = this.plugin, d = this.d;
@@ -1032,7 +1034,7 @@ class EditModal extends Modal {
       iconBtn("x", "Remove connection", () => { this.sync(); this.d.links.splice(i, 1); this.redraw(); }));
   }
 
-  draw() {
+  llDraw() {
     const p = this.plugin, d = this.d, c = CATS[d.cat];
     const isEdit = !!d.file;
     const field = ([k, label, type, ph]) => h("label", { cls: "ll-f" }, label,
@@ -1119,24 +1121,24 @@ class EditModal extends Modal {
 class Lightbox extends Modal {
   constructor(app, urls, i, title) {
     super(app);
-    this.urls = urls; this.i = i; this.title = title;
+    this.urls = urls; this.llIndex = i; this.caption = title;
     this.modalEl.addClass("ll-lightbox");
     this.containerEl.addClass("ll-lightbox-container");
   }
   onOpen() {
     this.scope.register([], "ArrowLeft", () => { this.step(-1); return false; });
     this.scope.register([], "ArrowRight", () => { this.step(1); return false; });
-    this.draw();
+    this.llDraw();
   }
   onClose() { this.contentEl.replaceChildren(); }
-  step(n) { this.i = (this.i + n + this.urls.length) % this.urls.length; this.draw(); }
-  draw() {
+  step(n) { this.llIndex = (this.llIndex + n + this.urls.length) % this.urls.length; this.llDraw(); }
+  llDraw() {
     const many = this.urls.length > 1;
     this.contentEl.replaceChildren(
-      h("img", { src: this.urls[this.i], alt: "" }),
+      h("img", { src: this.urls[this.llIndex], alt: "" }),
       many ? iconBtn("chevron-left", "Previous", () => this.step(-1), "ll-lb-prev") : null,
       many ? iconBtn("chevron-right", "Next", () => this.step(1), "ll-lb-next") : null,
-      h("div", { cls: "ll-lb-cap", text: `${this.title} · ${this.i + 1} / ${this.urls.length}` }));
+      h("div", { cls: "ll-lb-cap", text: `${this.caption} · ${this.llIndex + 1} / ${this.urls.length}` }));
   }
 }
 
@@ -1165,9 +1167,9 @@ class LifeLogBlock extends MarkdownRenderChild {
       if (m) this.opts[m[1].toLowerCase()] = m[2].toLowerCase();
     }
   }
-  onload() { this.unsub = this.plugin.onChange(() => this.draw()); this.draw(); }
+  onload() { this.unsub = this.plugin.onChange(() => this.llDraw()); this.llDraw(); }
   onunload() { if (this.unsub) this.unsub(); }
-  draw() {
+  llDraw() {
     const p = this.plugin, o = this.opts, el = this.containerEl;
     el.replaceChildren();
     el.addClass("lifelog", "ll-embed");
