@@ -1,16 +1,20 @@
 name: Release
 
-# Push a tag that matches the version in manifest.json (for example `1.0.1`,
-# no "v" prefix) and this workflow publishes a GitHub release with the three
-# files Obsidian and BRAT need: main.js, manifest.json and styles.css.
-# Tags containing a hyphen (for example `1.1.0-beta.1`) are published as
-# pre-releases, which BRAT can install as beta versions.
+# Publishes a GitHub release with the three files Obsidian and BRAT need:
+# main.js, manifest.json and styles.css. Three ways to start it:
 #
-# You can also create a release from the GitHub website (Releases → Draft a new
-# release → new tag such as 1.0.1 → Publish). The workflow then attaches the
-# three files to that release.
+#   1. Actions tab → Release → Run workflow. Releases the version that is in
+#      manifest.json (the tag is created for you).
+#   2. Push a tag that matches the version in manifest.json, e.g. `1.0.1`
+#      (no "v" prefix).
+#   3. Publish a release from the GitHub website with a matching tag; the
+#      files are attached to it.
+#
+# Versions with a hyphen (e.g. `1.1.0-beta.1`) are published as pre-releases,
+# which BRAT can install as beta versions.
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "*"
@@ -20,7 +24,7 @@ on:
 permissions:
   contents: write
 
-# A tag created from the website can fire both events; run them one at a time.
+# A tag created from the website can fire more than one event; run them one at a time.
 concurrency:
   group: release-${{ github.event.release.tag_name || github.ref_name }}
 
@@ -36,10 +40,14 @@ jobs:
         with:
           node-version: 20
 
-      - name: Check the tag matches manifest.json and versions.json
+      - name: Work out the version
         run: |
-          TAG="${{ github.event.release.tag_name || github.ref_name }}"
           MANIFEST_VERSION=$(jq -r .version manifest.json)
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="$MANIFEST_VERSION"
+          else
+            TAG="${{ github.event.release.tag_name || github.ref_name }}"
+          fi
           if [ "$TAG" != "$MANIFEST_VERSION" ]; then
             echo "::error::Tag '$TAG' does not match manifest.json version '$MANIFEST_VERSION'."
             exit 1
@@ -48,6 +56,7 @@ jobs:
             echo "::error::versions.json has no entry for '$TAG'."
             exit 1
           fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Check main.js
         run: node --check main.js
@@ -56,14 +65,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.event.release.tag_name || github.ref_name }}"
           if gh release view "$TAG" > /dev/null 2>&1; then
-            # Release already exists (e.g. created from the GitHub UI): refresh its files.
+            # Release already exists: refresh its files.
             gh release upload "$TAG" main.js manifest.json styles.css --clobber
           else
             FLAGS=""
             case "$TAG" in *-*) FLAGS="--prerelease" ;; esac
             gh release create "$TAG" main.js manifest.json styles.css \
+              --target "$GITHUB_SHA" \
               --title "Life Log $TAG" \
               --generate-notes \
               $FLAGS
